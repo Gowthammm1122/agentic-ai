@@ -1,37 +1,17 @@
 import os
-from openai import OpenAI
 from dotenv import load_dotenv
+import google.generativeai as genai
 
 load_dotenv()
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+model = genai.GenerativeModel("gemini-1.5-flash")
 
-client = OpenAI(
-    api_key=os.getenv("OPENROUTER_API_KEY"),
-    base_url="https://openrouter.ai/api/v1"
-)
-
-def generate_mermaid_diagram(process_flow_text):
+def generate_diagram(flow_steps):
     prompt = f"""
-You are an expert in turning project plans into diagrams.
+    Create a simple Mermaid-style flowchart for the following process:
+    {flow_steps}
 
-Convert this project milestone plan into a MermaidJS flowchart:
-
-{process_flow_text}
-
-Use the format:
-
-graph TD
-  M1["Milestone 1: ..."]
-  T1["Task 1"]
-  M1 --> T1
-
-Only return the raw Mermaid code.
-"""
-
-    try:
-        response = client.chat.completions.create(
-            model="openai/gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        return f"❌ Error: {e}"
+    Use only Mermaid flowchart syntax, no explanation.
+    """
+    response = model.generate_content(prompt)
+    return response.text.strip()

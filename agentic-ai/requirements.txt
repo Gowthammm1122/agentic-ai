@@ -1,0 +1,24 @@
+# LangGraph for agent workflow
+langgraph
+
+# LangChain core & community tools
+langchain
+langchain-community
+
+# Gemini LLM + Embeddings
+google-generativeai
+langchain-google-genai
+
+# Vector DB
+chromadb
+
+# Web scraping
+beautifulsoup4
+requests
+
+# Frontend
+streamlit
+
+# Environment variable management
+python-dotenv
+
