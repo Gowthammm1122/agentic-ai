@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
+.env
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Distribution / Builds
+build/
+dist/
+*.egg-info/
+
+# Databases & Storage
+chroma_db/
+gemini_rag_db/
+*.sqlite3
+
+# Generated Reports
+*.pdf
+AI_Project_Report.pdf
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# IDE settings (optional but recommended)
+.vscode/
+.idea/

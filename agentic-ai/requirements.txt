@@ -1,4 +1,4 @@
-# LangGraph for agent workflow
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            # LangGraph for agent workflow
 langgraph
 
 # LangChain core & community tools
@@ -22,3 +22,4 @@ streamlit
 # Environment variable management
 python-dotenv
 
+fpdf
