@@ -1,19 +1,19 @@
-import os
-from dotenv import load_dotenv
-import google.generativeai as genai
-
-load_dotenv()
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-model = genai.GenerativeModel("gemini-1.5-flash")
+from utils.llm import safe_generate_content
 
 def generate_feedback(context, purpose, flow):
     prompt = f"""
-    Review the following:
-    Context: {context}
-    Purpose: {purpose}
-    Flow: {flow}
+    You are the Senior Technical Analyst Agent. 
+    Collaborators have produced the following plan:
+    - Context: {context}
+    - Vision/Purpose: {purpose}
+    - Execution Flow: {flow}
 
-    Provide concise and actionable feedback for improving the project plan.
+    TASK: Provide a critical, expert-level feedback review. 
+    Highlight:
+    1. Potential Risks: What could go wrong in this execution?
+    2. Missing Pieces: Is there a step missing in the flow?
+    3. Technical Optimization: One way to make this more efficient.
+
+    Use bullet points (*) for each feedback item to ensure the PDF report is structured and professional.
     """
-    response = model.generate_content(prompt)
-    return response.text.strip()
+    return safe_generate_content(prompt)

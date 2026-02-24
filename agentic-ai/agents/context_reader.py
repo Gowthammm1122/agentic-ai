@@ -1,10 +1,4 @@
-import os
-from dotenv import load_dotenv
-import google.generativeai as genai
-
-load_dotenv()
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-model = genai.GenerativeModel("gemini-1.5-flash")
+from utils.llm import safe_generate_content
 
 def context_reader(title, goals, feedback):
     prompt = f"""
@@ -14,6 +8,5 @@ def context_reader(title, goals, feedback):
 
     Based on this input, extract the context or background the user is working with.
     """
-    response = model.generate_content(prompt)
-    return response.text.strip()
+    return safe_generate_content(prompt)
 

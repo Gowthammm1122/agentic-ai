@@ -1,14 +1,12 @@
-import os
-from dotenv import load_dotenv
-import google.generativeai as genai
+from utils.llm import safe_generate_content
 
-load_dotenv()
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-model = genai.GenerativeModel("gemini-1.5-flash")
-
-def generate_purpose(context):
+def generate_purpose(context, title):
     prompt = f"""
-    Given this context: "{context}", generate a clear project purpose statement for a student academic project.
+    You are the Strategic Vision Agent. 
+    Project Title: {title}
+    Full Context from Reader Agent: {context}
+
+    Based on the above, generate a professional, high-level Project Purpose statement. 
+    It should be visionary yet concrete.
     """
-    response = model.generate_content(prompt)
-    return response.text.strip()
+    return safe_generate_content(prompt)

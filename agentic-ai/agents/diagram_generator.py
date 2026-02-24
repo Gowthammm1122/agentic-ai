@@ -1,10 +1,4 @@
-import os
-from dotenv import load_dotenv
-import google.generativeai as genai
-
-load_dotenv()
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-model = genai.GenerativeModel("gemini-1.5-flash")
+from utils.llm import safe_generate_content
 
 def generate_diagram(flow_steps):
     prompt = f"""
@@ -13,5 +7,4 @@ def generate_diagram(flow_steps):
 
     Use only Mermaid flowchart syntax, no explanation.
     """
-    response = model.generate_content(prompt)
-    return response.text.strip()
+    return safe_generate_content(prompt)

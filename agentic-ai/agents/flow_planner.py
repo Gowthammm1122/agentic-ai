@@ -1,15 +1,13 @@
-import os
-from dotenv import load_dotenv
-import google.generativeai as genai
+from utils.llm import safe_generate_content
 
-load_dotenv()
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-model = genai.GenerativeModel("gemini-1.5-flash")
-
-def plan_flow(purpose):
+def plan_flow(purpose, context):
     prompt = f"""
-    Break down this project purpose into a clear step-by-step workflow:
-    "{purpose}"
+    You are the Execution Architect Agent. 
+    Collaborator (Vision Agent) defined this Purpose: "{purpose}"
+    Additional Context: "{context}"
+
+    Task: Break down this project into a clear, numbered step-by-step Execution Flow. 
+    Ensure the steps are logical, technical, and actionable. 
+    Use a numbered list format (1, 2, 3...) for clarity in the final report.
     """
-    response = model.generate_content(prompt)
-    return response.text.strip()
+    return safe_generate_content(prompt)

@@ -32,3 +32,6 @@ Thumbs.db
 # IDE settings (optional but recommended)
 .vscode/
 .idea/
+
+# Agent Cache
+.agent_cache/

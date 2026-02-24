@@ -22,4 +22,5 @@ streamlit
 # Environment variable management
 python-dotenv
 
-fpdf
+fpdf2
+groq
