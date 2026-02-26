@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- CONFIG & STYLING ---
-st.set_page_config(page_title="Agentic AI Planner Pro", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Axon — The intelligence hub", layout="wide", page_icon="⚡")
 
 st.markdown("""
     <style>
@@ -120,7 +120,7 @@ with st.sidebar:
     prefill = preset_options.get(preset, {})
 
 # --- MAIN UI ---
-st.markdown('<div class="title-container"><div class="title-style">Agentic AI Planner Pro</div><div class="subtitle-style">Premium Multi-Agent Orchestration with Self-Correction</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="title-container"><div class="title-style">⚡ Axon</div><div class="subtitle-style">The intelligence hub — Multi-Agent Orchestration with Self-Correction</div></div>', unsafe_allow_html=True)
 
 col1, col2 = st.columns([1, 2])
 

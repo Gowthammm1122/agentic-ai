@@ -1,6 +1,6 @@
-# Agentic AI Planner
+# ⚡ Axon — The intelligence hub
 
-## a AI-powered project planner built with Streamlit, LangGraph, and Gemini.
+## An AI-powered multi-agent orchestration platform built with Streamlit, LangGraph, and Gemini.
 
 ### Prerequisites
 - Python 3.11+
