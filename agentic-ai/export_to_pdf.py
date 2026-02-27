@@ -13,6 +13,7 @@ class PDFExporter(FPDF):
         self._text_color_main = (51, 65, 85)   # Slate 600
         self._bg_color_light = (248, 250, 252) # Slate 50
         
+        self.set_margins(10, 20, 10)
         self.set_auto_page_break(auto=True, margin=25)
         # add_page calls header(), so colors MUST be defined above this line
         self.add_page()
@@ -59,8 +60,46 @@ class PDFExporter(FPDF):
             text = text.replace(char, replacement)
         return text.encode('latin-1', 'replace').decode('latin-1')
 
+    def ensure_space(self, required_height):
+        available = self.h - self.b_margin - self.get_y()
+        if required_height > available:
+            self.add_page()
+            # Start below the compact page header bar
+            self.set_y(22)
+
+    def _estimate_line_count(self, text, width):
+        text = self.clean_text(text)
+        if not text:
+            return 1
+
+        total_lines = 0
+        for paragraph in text.split("\n"):
+            paragraph = paragraph.strip()
+            if not paragraph:
+                total_lines += 1
+                continue
+
+            words = paragraph.split()
+            if not words:
+                total_lines += 1
+                continue
+
+            current = words[0]
+            lines = 1
+            for word in words[1:]:
+                candidate = f"{current} {word}"
+                if self.get_string_width(candidate) <= width:
+                    current = candidate
+                else:
+                    lines += 1
+                    current = word
+            total_lines += lines
+
+        return max(1, total_lines)
+
     def draw_section_box(self, title):
-        self.ln(10)
+        self.ensure_space(24)
+        self.ln(6)
         # Background bar
         self.set_fill_color(241, 245, 249)
         self.rect(10, self.get_y(), 190, 10, 'F')
@@ -86,23 +125,29 @@ class PDFExporter(FPDF):
             self.set_text_color(51, 65, 85)
             fill = False
 
-        # Calculate heights
         x_start = 10
         y_start = self.get_y()
-        
-        # Left Column (e.g. Step #)
-        self.set_xy(x_start, y_start)
-        self.multi_cell(30, 8, self.clean_text(col1), border=1, align='C', fill=fill)
-        h1 = self.get_y() - y_start
-        
-        # Right Column (e.g. Description)
-        self.set_xy(x_start + 30, y_start)
-        self.multi_cell(160, 8, self.clean_text(col2), border=1, align='L', fill=fill)
-        h2 = self.get_y() - y_start
-        
-        # Reset Y to the max of both columns
-        max_h = max(h1, h2)
-        self.set_y(y_start + max_h)
+        line_h = 8
+        col1_text = self.clean_text(col1)
+        col2_text = self.clean_text(col2)
+
+        left_lines = self._estimate_line_count(col1_text, 26)
+        right_lines = self._estimate_line_count(col2_text, 156)
+        row_height = max(left_lines, right_lines) * line_h
+
+        self.ensure_space(row_height + 2)
+        y_start = self.get_y()
+
+        self.set_fill_color(226, 232, 240) if is_header else self.set_fill_color(255, 255, 255)
+        self.rect(x_start, y_start, 30, row_height, style='DF' if fill else 'D')
+        self.rect(x_start + 30, y_start, 160, row_height, style='DF' if fill else 'D')
+
+        self.set_xy(x_start + 1, y_start)
+        self.multi_cell(28, line_h, col1_text, border=0, align='C')
+        self.set_xy(x_start + 31, y_start)
+        self.multi_cell(158, line_h, col2_text, border=0, align='L')
+
+        self.set_y(y_start + row_height)
 
     def process_content_to_table(self, title, content):
         """Intelligently converts AI lists into visual 2-column tables."""
@@ -125,6 +170,8 @@ class PDFExporter(FPDF):
                 # Normal paragraph inside a table section
                 self.set_font("helvetica", "", 10)
                 self.set_text_color(51, 65, 85)
+                para_lines = self._estimate_line_count(line, 186)
+                self.ensure_space((para_lines * 7) + 2)
                 self.multi_cell(0, 7, self.clean_text(line))
         self.ln(5)
 
@@ -145,6 +192,8 @@ class PDFExporter(FPDF):
         self.draw_section_box("I. Strategic Vision")
         self.set_font("helvetica", "", 11)
         self.set_text_color(51, 65, 85)
+        purpose_text = self.clean_text(self.agent_data.get("purpose", ""))
+        self.ensure_space((self._estimate_line_count(purpose_text, 186) * 7) + 4)
         self.multi_cell(0, 7, self.clean_text(self.agent_data.get("purpose", "")))
 
         # 2. EXECUTION TABLE
@@ -155,6 +204,8 @@ class PDFExporter(FPDF):
         self.set_font("courier", "", 9)
         self.set_fill_color(241, 245, 249)
         self.set_text_color(30, 41, 59)
+        diagram_text = self.clean_text(self.agent_data.get("diagram", ""))
+        self.ensure_space((self._estimate_line_count(diagram_text, 186) * 5) + 4)
         self.multi_cell(0, 5, self.clean_text(self.agent_data.get("diagram", "")), fill=True, border=1)
 
         # 4. MARKET INTELLIGENCE TABLE
@@ -164,6 +215,8 @@ class PDFExporter(FPDF):
         self.draw_section_box("V. Risk Assessment & Review")
         self.set_font("helvetica", "I", 10)
         self.set_text_color(51, 65, 85)
+        feedback_text = self.clean_text(self.agent_data.get("feedback_out", ""))
+        self.ensure_space((self._estimate_line_count(feedback_text, 186) * 7) + 4)
         self.multi_cell(0, 7, self.clean_text(self.agent_data.get("feedback_out", "")))
 
         # Final PDF output
