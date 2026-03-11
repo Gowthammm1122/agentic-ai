@@ -52,7 +52,7 @@
 
 % ======================== ABSTRACT ========================
 \begin{abstract}
-Large Language Models (LLMs) have demonstrated remarkable capabilities in natural language understanding and generation, yet their application in structured, multi-step planning tasks remains limited by issues of hallucination, shallow reasoning, and lack of self-verification. This paper presents \textit{Agentic AI Planner}, a novel multi-agent orchestration framework built on LangGraph that automates end-to-end project planning through a pipeline of specialized LLM agents with an integrated self-correction mechanism. The system comprises seven distinct agents --- Context Reader, Strategic Vision, Execution Architect, Reviewer Critic, Diagram Generator, Senior Technical Analyst, and Market Intelligence --- coordinated through a directed acyclic graph (DAG) with conditional feedback loops. A Reviewer Critic agent evaluates intermediate outputs against alignment, depth, and actionability criteria, triggering automatic re-generation (up to $k=2$ retries) when quality thresholds are not met. The Market Intelligence agent augments planning with real-time web data via retrieval-augmented generation (RAG) using ChromaDB and Google Generative AI embeddings. We evaluate the framework on 50 diverse project planning scenarios across five domains, measuring output quality through human expert scoring (1--5 Likert scale), self-correction effectiveness, and latency. Results show that the multi-agent pipeline with self-correction achieves a mean quality score of 4.12 ($\sigma=0.41$) compared to 3.08 ($\sigma=0.67$) for single-shot LLM baselines, a 33.8\% improvement. The self-correction loop improved 72\% of initially rejected plans, with an average of 1.3 iterations. The complete system generates publication-ready strategic reports with architecture diagrams in under 45 seconds per project. The framework is open-source and extensible, demonstrating that structured multi-agent orchestration with self-correction significantly outperforms monolithic LLM approaches for complex planning tasks.
+Large Language Models (LLMs) have demonstrated remarkable capabilities in natural language understanding and generation, yet their application in structured, multi-step planning tasks remains limited by issues of hallucination, shallow reasoning, and lack of self-verification. This paper presents \textit{Agentic AI Planner}, a novel multi-agent orchestration framework built on LangGraph that automates end-to-end project planning through a pipeline of specialized LLM agents with an integrated self-correction mechanism. The system comprises seven distinct agents --- Context Reader, Strategic Vision, Execution Architect, Reviewer Critic, Diagram Generator, Senior Technical Analyst, and Market Intelligence --- coordinated through a directed acyclic graph (DAG) with conditional feedback loops. A Reviewer Critic agent evaluates intermediate outputs against four criteria --- alignment, specificity, completeness, and feasibility --- each scored on a 1--5 scale, triggering automatic re-generation (up to $k=2$ retries) when any score falls below the threshold. The Market Intelligence agent augments planning with real-time web data via retrieval-augmented generation (RAG) using ChromaDB and Google Generative AI embeddings. We evaluate the framework on 50 diverse project planning scenarios across five domains, measuring output quality through human expert scoring (1--5 Likert scale), self-correction effectiveness, and latency. Results show that the multi-agent pipeline with self-correction achieves a mean quality score of 4.12 ($\sigma=0.41$) compared to 3.08 ($\sigma=0.67$) for single-shot LLM baselines, a 33.8\% improvement. The self-correction loop improved 72\% of initially rejected plans, with an average of 1.3 iterations. The complete system generates publication-ready strategic reports with architecture diagrams in under 45 seconds per project. The framework is open-source and extensible, demonstrating that structured multi-agent orchestration with self-correction significantly outperforms monolithic LLM approaches for complex planning tasks.
 \end{abstract}
 
 % ======================== KEYWORDS ========================
@@ -74,7 +74,7 @@ This paper addresses these gaps through the following contributions:
 \begin{enumerate}[label=(\arabic*)]
     \item \textbf{Multi-Agent Orchestration Framework}: We present a seven-agent pipeline built on LangGraph \cite{langgraph2024} that decomposes project planning into specialized subtasks --- context extraction, purpose generation, execution flow design, quality review, diagram generation, technical critique, and market analysis --- coordinated through a stateful directed acyclic graph.
     
-    \item \textbf{Self-Correction via Reviewer Critic}: We introduce a conditional feedback loop where a Reviewer Critic agent evaluates intermediate outputs for alignment, depth, and actionability, automatically triggering re-generation of upstream nodes when quality is insufficient. This mechanism is bounded by a configurable retry limit ($k=2$) to prevent infinite loops.
+    \item \textbf{Self-Correction via Reviewer Critic}: We introduce a conditional feedback loop where a Reviewer Critic agent evaluates intermediate outputs across four criteria (alignment, specificity, completeness, and feasibility), automatically triggering re-generation of upstream nodes when any criterion scores below 3 on a 1--5 scale. This mechanism is bounded by a configurable retry limit ($k=2$) to prevent infinite loops.
     
     \item \textbf{RAG-Augmented Market Intelligence}: The Market Intelligence agent performs real-time web searches via the Serper API, embeds retrieved documents using Google Generative AI embeddings, and uses ChromaDB vector similarity search to ground market analysis in current data rather than relying solely on the LLM's parametric knowledge.
     
@@ -185,15 +185,16 @@ The Strategic Vision agent takes the context $c$ and project title $t$ to genera
 The Execution Architect agent receives both the purpose $p$ and context $c$ to generate a numbered, step-by-step execution flow $e$. By conditioning on both inputs, it ensures the technical steps align with both the strategic vision and the original user requirements. This agent is also re-invoked during correction.
 
 \subsubsection{Agent 4: Reviewer Critic}
-The Reviewer Critic is the self-correction mechanism. It evaluates the triple $(c, p, e)$ against three criteria:
+The Reviewer Critic is the self-correction mechanism. It evaluates the triple $(c, p, e)$ against four criteria, each scored on a 1--5 scale:
 
 \begin{itemize}
-    \item \textbf{Alignment}: Does the execution flow achieve the stated goals?
-    \item \textbf{Depth}: Is the purpose statement sufficiently specific (not generic)?
-    \item \textbf{Actionability}: Are the flow steps clear and implementable?
+    \item \textbf{Alignment}: Does the execution flow actually fulfil the stated purpose?
+    \item \textbf{Specificity}: Are steps technical and concrete (not vague)?
+    \item \textbf{Completeness}: Are all lifecycle phases covered (design, build, test, deploy, monitor)?
+    \item \textbf{Feasibility}: Is the plan realistic for a real team?
 \end{itemize}
 
-If all criteria are satisfied, it outputs \texttt{APPROVED}. Otherwise, it outputs \texttt{REJECTED: [constructive feedback]}, and the pipeline loops back to Agent 2 (Strategic Vision) for re-generation. The reviewer is deliberately \textit{not cached} to ensure dynamic evaluation across iterations.
+If all four criteria score $\geq 3$, it outputs \texttt{APPROVED}. Otherwise, it outputs \texttt{REJECTED: [concise, actionable critique $\leq$ 100 words]}, and the pipeline loops back to Agent 2 (Strategic Vision) for re-generation. The reviewer uses a low temperature of 0.1 for deterministic verdicts and is deliberately \textit{not cached} to ensure dynamic evaluation across iterations.
 
 \subsubsection{Agent 5: Diagram Generator}
 Upon approval, the Diagram Generator converts the execution flow $e$ into a Mermaid.js flowchart $d$, providing a visual representation of the project architecture suitable for technical documentation.
@@ -204,13 +205,15 @@ The Technical Analyst agent receives $(c, p, e)$ and produces a critical risk as
 \subsubsection{Agent 7: Market Intelligence}
 The Market Intelligence agent is the only agent with external data access. It:
 \begin{enumerate}
-    \item Queries the Serper API with a refined search derived from the purpose statement;
-    \item Retrieves the top 3 organic search results;
-    \item Embeds retrieved documents using Google Generative AI embeddings;
-    \item Stores embeddings in a ChromaDB vector database;
-    \item Performs similarity search (top-$k=2$) against the purpose to retrieve the most relevant context;
+    \item Queries the Serper API with a refined search derived from the purpose statement, augmented with temporal keywords (``market analysis 2025 competitors trends'');
+    \item Retrieves the top 5 organic search results, extracting title and snippet fields;
+    \item Wraps results in LangChain \texttt{Document} objects and embeds them using Google Generative AI embeddings (\texttt{gemini-embedding-001});
+    \item Stores embeddings in a transient ChromaDB vector database;
+    \item Performs similarity search (top-$k=3$) against the purpose to retrieve the most relevant context;
     \item Generates market analysis conditioned on both the plan and retrieved market data.
 \end{enumerate}
+
+If the Serper API key is unavailable or the web search fails, the agent falls back gracefully to using the LLM's parametric knowledge only.
 
 \subsection{Self-Correction Mechanism}
 
@@ -263,8 +266,7 @@ The system is implemented in Python 3.11+ using the following components:
         \midrule
         Orchestration & LangGraph (StateGraph) & Agent DAG \\
         LLM Backend & Groq API & Inference \\
-        Primary Model & GPT-OSS-120B & Generation \\
-        Fallback Model & LLaMA-3.3-70B & Fallback \\
+        Primary Model & LLaMA-3.3-70B-Versatile & Generation \\
         Embeddings & Gemini Embedding 001 & RAG vectors \\
         Vector Store & ChromaDB & Similarity search \\
         Web Search & Serper API & Market data \\
@@ -277,11 +279,11 @@ The system is implemented in Python 3.11+ using the following components:
 
 \subsection{LLM Integration with Fault Tolerance}
 
-The LLM wrapper (\texttt{safe\_generate\_content}) implements a robust fault-tolerance strategy:
+The LLM wrapper (\texttt{safe\_invoke}) implements a robust fault-tolerance strategy:
 
 \begin{itemize}
     \item \textbf{Exponential Backoff}: On rate limit (HTTP 429) errors, the system retries with exponentially increasing delays ($2s \rightarrow 4s \rightarrow 8s$), up to \texttt{max\_retries=3}.
-    \item \textbf{Model Fallback}: If the primary model (\texttt{openai/gpt-oss-120b}) is unavailable, the system automatically falls back to \texttt{llama-3.3-70b-versatile}.
+    \item \textbf{Model Fallback}: If the primary model (\texttt{llama-3.3-70b-versatile}) is unavailable or rate-limited, the system automatically retries with the same model after backoff delays.
     \item \textbf{Graceful Degradation}: If all retries fail, a descriptive error message is returned rather than raising an exception, ensuring pipeline continuity.
 \end{itemize}
 
@@ -290,18 +292,19 @@ The LLM wrapper (\texttt{safe\_generate\_content}) implements a robust fault-tol
 The pipeline state is managed through LangGraph's \texttt{AgenticState} class (a typed dictionary subclass) with the following schema:
 
 \begin{lstlisting}[caption={State schema definition},label={lst:state}]
-class AgenticState(dict):
-    title: str        # User input
-    goals: str        # User input
-    feedback: str     # User input
-    context: str      # Agent 1 output
-    purpose: str      # Agent 2 output
-    flow: str         # Agent 3 output
-    diagram: str      # Agent 5 output
-    feedback_out: str # Agent 6 output
-    market_insights: str  # Agent 7 output
-    review_result: str    # Agent 4 output
-    retry_count: int      # Loop counter
+class AgenticState(TypedDict, total=False):
+    title: str          # User input
+    goals: str          # User input
+    feedback: str       # User input
+    context: str        # Agent 1 output
+    purpose: str        # Agent 2 output
+    flow: str           # Agent 3 output
+    diagram: str        # Agent 5 output
+    feedback_out: str   # Agent 6 output
+    market_insights: str # Agent 7 output
+    review_result: str  # Agent 4 output
+    critique: str       # Extracted critique for retry
+    retry_count: int    # Loop counter
 \end{lstlisting}
 
 Each agent reads from and writes to specific state keys, ensuring clean data flow and enabling the cache to track dependencies.
@@ -311,11 +314,11 @@ Each agent reads from and writes to specific state keys, ensuring clean data flo
 The Market Intelligence agent's RAG pipeline operates as follows:
 
 \begin{enumerate}
-    \item \textbf{Query Construction}: The purpose statement (truncated to 100 characters) is used as the search query, augmented with temporal keywords (``market trends competitors 2024 2025'').
-    \item \textbf{Web Retrieval}: The Serper API returns up to 3 organic search results, extracting title and snippet fields.
+    \item \textbf{Query Construction}: The purpose statement (truncated to 120 characters) is used as the search query, augmented with temporal keywords (``market analysis 2025 competitors trends'').
+    \item \textbf{Web Retrieval}: The Serper API returns up to 5 organic search results, extracting title and snippet fields.
     \item \textbf{Document Embedding}: Retrieved text is wrapped in LangChain \texttt{Document} objects and embedded using \texttt{models/gemini-embedding-001}.
     \item \textbf{Vector Storage}: Embeddings are stored in a transient ChromaDB instance.
-    \item \textbf{Similarity Retrieval}: The purpose statement is used as a query to retrieve the top-2 most similar documents.
+    \item \textbf{Similarity Retrieval}: The purpose statement is used as a query to retrieve the top-3 most similar documents.
     \item \textbf{Augmented Generation}: Retrieved context is injected into the generation prompt alongside the plan details.
 \end{enumerate}
 
@@ -569,7 +572,83 @@ The system is open-source and available for community use, contribution, and ext
 The authors thank the human evaluators who participated in the quality assessment study, and the open-source communities behind LangGraph, LangChain, ChromaDB, and Streamlit for their foundational tools.
 
 % ======================== REFERENCES ========================
-\bibliographystyle{IEEEtran}
-\bibliography{references}
+\begin{thebibliography}{99}
+
+\bibitem{openai2023gpt4}
+OpenAI, ``{GPT-4} Technical Report,'' \textit{arXiv preprint arXiv:2303.08774}, 2023. [Online]. Available: \url{https://arxiv.org/abs/2303.08774}
+
+\bibitem{google2023gemini}
+Gemini Team and Google DeepMind, ``Gemini: A Family of Highly Capable Multimodal Models,'' \textit{arXiv preprint arXiv:2312.11805}, 2023. [Online]. Available: \url{https://arxiv.org/abs/2312.11805}
+
+\bibitem{touvron2023llama}
+H.~Touvron, L.~Martin, K.~Stone, P.~Albert, A.~Almahairi, Y.~Babaei, N.~Bashlykov, S.~Batra, P.~Bhargava, S.~Bhosale \textit{et~al.}, ``{LLaMA}: Open and Efficient Foundation Language Models,'' \textit{arXiv preprint arXiv:2302.13971}, 2023. [Online]. Available: \url{https://arxiv.org/abs/2302.13971}
+
+\bibitem{ji2023survey}
+Z.~Ji, N.~Lee, R.~Frieske, T.~Yu, D.~Su, Y.~Xu, E.~Ishii, Y.~J.~Bang, A.~Madotto, and P.~Fung, ``Survey of Hallucination in Natural Language Generation,'' \textit{ACM Computing Surveys}, vol.~55, no.~12, pp.~1--38, 2023.
+
+\bibitem{wang2023selfconsistency}
+X.~Wang, J.~Wei, D.~Schuurmans, Q.~V.~Le, E.~H.~Chi, S.~Narang, A.~Chowdhery, and D.~Zhou, ``Self-Consistency Improves Chain of Thought Reasoning in Language Models,'' in \textit{Proc. International Conference on Learning Representations (ICLR)}, 2023.
+
+\bibitem{madaan2023selfrefine}
+A.~Madaan, N.~Tandon, P.~Gupta, S.~Hallinan, L.~Gao, S.~Wiegreffe, U.~Alon, N.~Dziri, S.~Prabhumoye, Y.~Yang \textit{et~al.}, ``Self-Refine: Iterative Refinement with Self-Feedback,'' in \textit{Advances in Neural Information Processing Systems (NeurIPS)}, vol.~36, 2023.
+
+\bibitem{wei2022chain}
+J.~Wei, X.~Wang, D.~Schuurmans, M.~Bosma, B.~Ichter, F.~Xia, E.~H.~Chi, Q.~V.~Le, and D.~Zhou, ``Chain-of-Thought Prompting Elicits Reasoning in Large Language Models,'' in \textit{Advances in Neural Information Processing Systems (NeurIPS)}, vol.~35, pp.~24824--24837, 2022.
+
+\bibitem{yao2023tree}
+S.~Yao, D.~Yu, J.~Zhao, I.~Shafran, T.~L.~Griffiths, Y.~Cao, and K.~Narasimhan, ``Tree of Thoughts: Deliberate Problem Solving with Large Language Models,'' in \textit{Advances in Neural Information Processing Systems (NeurIPS)}, vol.~36, 2023.
+
+\bibitem{wu2023autogen}
+Q.~Wu, G.~Bansal, J.~Zhang, Y.~Wu, B.~Li, E.~Zhu, L.~Jiang, X.~Zhang, S.~Zhang, J.~Liu \textit{et~al.}, ``{AutoGen}: Enabling Next-Gen {LLM} Applications via Multi-Agent Conversation,'' \textit{arXiv preprint arXiv:2308.08155}, 2023. [Online]. Available: \url{https://arxiv.org/abs/2308.08155}
+
+\bibitem{hong2023metagpt}
+S.~Hong, M.~Zhuge, J.~Chen, X.~Zheng, Y.~Cheng, C.~Zhang, J.~Wang, Z.~Wang, S.~K.~S.~Yau, Z.~Lin \textit{et~al.}, ``{MetaGPT}: Meta Programming for A Multi-Agent Collaborative Framework,'' \textit{arXiv preprint arXiv:2308.00352}, 2023. [Online]. Available: \url{https://arxiv.org/abs/2308.00352}
+
+\bibitem{li2023camel}
+G.~Li, H.~A.~A.~K.~Hammoud, H.~Itani, D.~Khizbullin, and B.~Ghanem, ``{CAMEL}: Communicative Agents for `Mind' Exploration of Large Language Model Society,'' in \textit{Advances in Neural Information Processing Systems (NeurIPS)}, vol.~36, 2023.
+
+\bibitem{crewai2024}
+{CrewAI}, ``{CrewAI}: Framework for Orchestrating Role-Playing Autonomous AI Agents,'' 2024. [Online]. Available: \url{https://github.com/joaomdmoura/crewAI}. Accessed: 2025-02-01.
+
+\bibitem{shinn2023reflexion}
+N.~Shinn, F.~Cassano, A.~Gopinath, K.~Narasimhan, and S.~Yao, ``Reflexion: Language Agents with Verbal Reinforcement Learning,'' in \textit{Advances in Neural Information Processing Systems (NeurIPS)}, vol.~36, 2023.
+
+\bibitem{pan2023automatically}
+L.~Pan, M.~Saxon, W.~Xu, D.~Nathani, X.~Wang, and W.~Y.~Wang, ``Automatically Correcting Large Language Models: Surveying the Landscape of Diverse Automated Correction Strategies,'' \textit{Transactions of the Association for Computational Linguistics}, vol.~12, pp.~484--506, 2024.
+
+\bibitem{lewis2020rag}
+P.~Lewis, E.~Perez, A.~Piktus, F.~Petroni, V.~Karpukhin, N.~Goyal, H.~K{\"u}ttler, M.~Lewis, W.-t.~Yih, T.~Rockt{\"a}schel \textit{et~al.}, ``Retrieval-Augmented Generation for Knowledge-Intensive {NLP} Tasks,'' in \textit{Advances in Neural Information Processing Systems (NeurIPS)}, vol.~33, pp.~9459--9474, 2020.
+
+\bibitem{guu2020realm}
+K.~Guu, K.~Lee, Z.~Tung, P.~Pasupat, and M.~Chang, ``{REALM}: Retrieval-Augmented Language Model Pre-Training,'' in \textit{Proc. International Conference on Machine Learning (ICML)}, pp.~3929--3938, 2020.
+
+\bibitem{thorne2018fever}
+J.~Thorne, A.~Vlachos, C.~Christodoulopoulos, and A.~Mittal, ``{FEVER}: A Large-scale Dataset for Fact Extraction and VERification,'' in \textit{Proc. Conference of the North American Chapter of the Association for Computational Linguistics (NAACL-HLT)}, pp.~809--819, 2018.
+
+\bibitem{shuster2021retrieval}
+K.~Shuster, S.~Poff, M.~Chen, D.~Kiela, and J.~Weston, ``Retrieval Augmentation Reduces Hallucination in Conversation,'' in \textit{Findings of the Association for Computational Linguistics (EMNLP)}, pp.~3784--3803, 2021.
+
+\bibitem{langgraph2024}
+{LangChain Inc.}, ``{LangGraph}: Build Stateful, Multi-Actor Applications with {LLMs},'' 2024. [Online]. Available: \url{https://github.com/langchain-ai/langgraph}. Accessed: 2025-01-15.
+
+\bibitem{langchain2023}
+{LangChain Inc.}, ``{LangChain}: Building Applications with {LLMs} Through Composability,'' 2023. [Online]. Available: \url{https://github.com/langchain-ai/langchain}. Accessed: 2025-01-15.
+
+\bibitem{llamaindex2023}
+{LlamaIndex}, ``{LlamaIndex}: Data Framework for {LLM} Applications,'' 2023. [Online]. Available: \url{https://github.com/run-llama/llama_index}. Accessed: 2025-01-15.
+
+\bibitem{kolisch1997psplib}
+R.~Kolisch and A.~Sprecher, ``{PSPLIB} --- A Project Scheduling Problem Library,'' \textit{European Journal of Operational Research}, vol.~96, no.~1, pp.~205--216, 1997.
+
+\bibitem{huang2023inner}
+W.~Huang, F.~Xia, T.~Xiao, H.~Chan, J.~Liang, P.~Florence, A.~Zeng, J.~Tompson, I.~Mordatch, Y.~Chebotar \textit{et~al.}, ``Inner Monologue: Embodied Reasoning Through Planning with Language Models,'' in \textit{Proc. Conference on Robot Learning (CoRL)}, pp.~1769--1782, 2023.
+
+\bibitem{song2023llmplanner}
+C.~H.~Song, J.~Wu, C.~Washington, B.~M.~Sadler, W.-L.~Chao, and Y.~Su, ``{LLM-Planner}: Few-Shot Grounded Planning for Embodied Agents with Large Language Models,'' in \textit{Proc. IEEE/CVF International Conference on Computer Vision (ICCV)}, pp.~2998--3009, 2023.
+
+\bibitem{krippendorff2011computing}
+K.~Krippendorff, ``Computing Krippendorff's Alpha-Reliability,'' \textit{Communication Methods and Measures}, vol.~5, no.~1, 2011.
+
+\end{thebibliography}
 
 \end{document}
