@@ -1,26 +1,31 @@
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            # LangGraph for agent workflow
+# ── LangGraph orchestration ────────────────────────────────────────────────────
 langgraph
 
-# LangChain core & community tools
+# ── LangChain core ─────────────────────────────────────────────────────────────
 langchain
+langchain-core
 langchain-community
 
-# Gemini LLM + Embeddings
+# ── LLM providers ─────────────────────────────────────────────────────────────
+langchain-groq
+groq
+
+# ── Embeddings (Gemini) ────────────────────────────────────────────────────────
 google-generativeai
 langchain-google-genai
 
-# Vector DB
+# ── Vector store ───────────────────────────────────────────────────────────────
 chromadb
 
-# Web scraping
-beautifulsoup4
+# ── Web search / scraping ─────────────────────────────────────────────────────
 requests
+beautifulsoup4
 
-# Frontend
+# ── Frontend ──────────────────────────────────────────────────────────────────
 streamlit
 
-# Environment variable management
-python-dotenv
-
+# ── PDF export ────────────────────────────────────────────────────────────────
 fpdf2
-groq
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+python-dotenv

@@ -1,89 +1,128 @@
+"""
+Market Intelligence Agent
+─────────────────────────
+Uses LangChain's tool-calling pattern:
+  1. Fetches live web search results via Serper.dev (Tool)
+  2. Embeds + retrieves the most relevant snippets with Chroma (RAG)
+  3. Invokes the LLM with the retrieved context (Generation)
+
+This is a proper Retrieval-Augmented Generation (RAG) agent.
+"""
+
 import os
 import requests
 from dotenv import load_dotenv
 
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.documents import Document
 from langchain_community.vectorstores import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_core.documents import Document
-from utils.llm import safe_generate_content
+from utils.llm import get_llm
 
-# Force reload of environment variables
 load_dotenv(override=True)
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# ✅ Fetch Google search results via Serper.dev
-def fetch_serper_results(query):
+# ── Tool: Web Search via Serper ────────────────────────────────────────────────
+def _web_search(query: str, n: int = 5) -> list[str]:
+    """Fetch top-n organic search snippets from Serper.dev."""
     if not SERPER_API_KEY:
-        print("⚠️ SERPER_API_KEY not found. Skipping web search.")
+        print("  [MarketAgent] SERPER_API_KEY missing – skipping web search.")
         return []
-
-    url = "https://google.serper.dev/search"
-    headers = {"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"}
-    
-    # Refine query for better results/efficiency
-    payload = {"q": f"{query} market trends competitors 2024 2025"}
-    
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        if "organic" in data:
-            return [
-                f"{item['title']}. {item['snippet']}"
-                for item in data["organic"][:3] 
-                if "snippet" in item
-            ]
-        return []
+        resp = requests.post(
+            "https://google.serper.dev/search",
+            headers={"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"},
+            json={"q": f"{query} market analysis 2025 competitors trends"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        results = []
+        for item in data.get("organic", [])[:n]:
+            title   = item.get("title", "")
+            snippet = item.get("snippet", "")
+            if snippet:
+                results.append(f"{title}: {snippet}")
+        return results
     except Exception as e:
-        print(f"❌ Serper error: {e}")
+        print(f"  [MarketAgent] Serper error: {e}")
         return []
 
-# ✅ Main market feedback agent
-def market_feedback_agent(context, purpose, flow):
-    if not SERPER_API_KEY:
-        return "⚠️ Serper API key is missing. Market insights are limited to AI knowledge."
 
-    # Use Purpose as primary search query for specificity
-    query = purpose[:100] if purpose else context[:100]
-    articles = fetch_serper_results(query)
-
-    if not articles:
-        return "⚠️ No real-time data found. Try refining your project goals for better search matching."
-
+# ── Tool: RAG retrieval ────────────────────────────────────────────────────────
+def _rag_retrieve(documents: list[str], query: str, k: int = 3) -> str:
+    """Embed documents, retrieve top-k relevant ones, return combined text."""
+    if not documents:
+        return ""
     if not GOOGLE_API_KEY:
-        return "⚠️ GOOGLE_API_KEY missing. Cannot perform RAG for market insights."
-
+        # Fallback: just concatenate all snippets
+        return " | ".join(documents[:3])
     try:
         embedding = GoogleGenerativeAIEmbeddings(
             model="models/gemini-embedding-001",
-            google_api_key=GOOGLE_API_KEY
+            google_api_key=GOOGLE_API_KEY,
         )
-
-        docs = [Document(page_content=article) for article in articles]
+        docs = [Document(page_content=d) for d in documents]
         vectordb = Chroma.from_documents(docs, embedding)
-
-        top_docs = vectordb.similarity_search(purpose, k=2)
-        combined_refs = " | ".join([doc.page_content for doc in top_docs])
+        top = vectordb.similarity_search(query, k=k)
+        return " | ".join(d.page_content for d in top)
     except Exception as e:
-        print(f"⚠️ Embedding/RAG error: {e}")
-        combined_refs = " (Market data unavailable due to RAG switchover) "
+        print(f"  [MarketAgent] RAG/Embedding error: {e}")
+        return " | ".join(documents[:3])   # graceful fallback
 
-    prompt = f"""
-    You are the Market Intelligence Agent.
-    
-    COLLECTED INPUTS:
-    - Vision: {purpose}
-    - Proposed Flow: {flow}
-    - Web Context: {combined_refs}
 
-    TASK:
-    1. Analyze how this project sits in the current 2024-2025 market.
-    2. Suggest 3 specific features that would make this stand out.
-    3. Identify 2 potential competitors or similar existing solutions.
+# ── Prompt ─────────────────────────────────────────────────────────────────────
+_SYSTEM = """You are the **Market Intelligence Agent** — an autonomous researcher
+embedded in an AI planning pipeline. You have been given real-time web data.
 
-    Format your response with clear bullet points (*) and bold headings for each point to ensure a professional report layout.
-    """
+Using the retrieved market data, produce a structured analysis:
 
-    return safe_generate_content(prompt)
+## Market Position (2025)
+[2-3 sentences: where does this project sit in today's landscape?]
+
+## Standout Features (3 recommendations)
+1. [Feature]: [Why it creates a competitive edge]
+2. [Feature]: [Why it creates a competitive edge]
+3. [Feature]: [Why it creates a competitive edge]
+
+## Competitive Landscape
+- Competitor 1: [Name] – [What they do, and what gap this project fills vs them]
+- Competitor 2: [Name] – [What they do, and what gap this project fills vs them]
+
+## Go-To-Market Insight
+[One concrete GTM strategy recommendation based on the market data]
+
+Use hyphens (-) for bullets, not unicode characters.
+"""
+
+_HUMAN = """Project Vision: {purpose}
+Execution Flow Summary: {flow}
+Retrieved Market Data: {market_data}
+
+Generate the Market Intelligence report now."""
+
+_prompt = ChatPromptTemplate.from_messages([("system", _SYSTEM), ("human", _HUMAN)])
+
+
+# ── Main agent function ────────────────────────────────────────────────────────
+def market_feedback_agent(context: str, purpose: str, flow: str) -> str:
+    # Step 1: Web search
+    search_query = (purpose or context)[:120]
+    raw_docs = _web_search(search_query)
+
+    # Step 2: RAG retrieval
+    if raw_docs:
+        market_data = _rag_retrieve(raw_docs, purpose)
+    else:
+        market_data = "No live web data available – analysis based on training knowledge only."
+
+    # Step 3: LLM generation
+    chain = _prompt | get_llm(temperature=0.4)
+    result = chain.invoke({
+        "purpose": purpose,
+        "flow": flow[:500],          # keep prompt from exploding in size
+        "market_data": market_data,
+    })
+    return result.content.strip()

@@ -1,58 +1,63 @@
-import time
+"""
+LLM utility – returns a LangChain ChatGroq instance.
+
+All agents use this single entry-point so it's easy to swap models.
+"""
+
 import os
-from groq import Groq
+import time
 from dotenv import load_dotenv
+from langchain_groq import ChatGroq
+from langchain_core.messages import HumanMessage
 
 load_dotenv()
 
-def get_groq_client():
-    return Groq(api_key=os.getenv("GROQ_API_KEY"))
-
-# The model user requested. Fallback to llama if it fails.
-DEFAULT_MODEL = "openai/gpt-oss-120b"
+# ── Model config ───────────────────────────────────────────────────────────────
+PRIMARY_MODEL  = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 FALLBACK_MODEL = "llama-3.3-70b-versatile"
 
-def safe_generate_content(prompt, model_name=None, max_retries=3, initial_delay=2):
-    """
-    Wrapper for Groq API with exponential backoff.
-    """
-    current_model = model_name or os.getenv("GROQ_MODEL", DEFAULT_MODEL)
-    delay = initial_delay
-    client = get_groq_client()
 
-    for attempt in range(max_retries):
-        try:
-            chat_completion = client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt,
-                    }
-                ],
-                model=current_model,
-            )
-            return chat_completion.choices[0].message.content.strip()
-        
-        except Exception as e:
-            error_msg = str(e).lower()
-            
-            # Check for Rate Limit (429)
-            if "rate limit" in error_msg or "429" in error_msg:
-                if attempt < max_retries - 1:
-                    print(f"⚠️ Groq Rate limit hit. Retrying in {delay}s...")
-                    time.sleep(delay)
-                    delay *= 2
-                    continue
-            
-            # Check for invalid model error (common if the requested model doesn't exist on Groq)
-            if "not found" in error_msg or "unsupported" in error_msg:
-                if current_model != FALLBACK_MODEL:
-                    print(f"⚠️ Model {current_model} not found on Groq. Falling back to {FALLBACK_MODEL}...")
-                    current_model = FALLBACK_MODEL
-                    delay = initial_delay # reset delay for new model
-                    continue
+def get_llm(model: str | None = None, temperature: float = 0.4) -> ChatGroq:
+    """Return a configured ChatGroq instance."""
+    return ChatGroq(
+        model=model or PRIMARY_MODEL,
+        api_key=os.getenv("GROQ_API_KEY"),
+        temperature=temperature,
+        max_retries=2,
+    )
 
-            print(f"❌ Groq Error: {e}")
-            break
-            
-    return "⚠️ Groq is currently unavailable or the model name is incorrect. Please check your API key and model name."
+
+def safe_invoke(prompt: str, temperature: float = 0.4, max_retries: int = 3) -> str:
+    """
+    Invoke the LLM with automatic retry + model fallback.
+    Returns the response text, or an error message on total failure.
+    """
+    models_to_try = [PRIMARY_MODEL, FALLBACK_MODEL]
+    delay = 2
+
+    for model_name in models_to_try:
+        llm = get_llm(model=model_name, temperature=temperature)
+        for attempt in range(max_retries):
+            try:
+                response = llm.invoke([HumanMessage(content=prompt)])
+                return response.content.strip()
+            except Exception as e:
+                err = str(e).lower()
+                if "rate limit" in err or "429" in err:
+                    if attempt < max_retries - 1:
+                        print(f"  [LLM] Rate-limit hit ({model_name}). Waiting {delay}s …")
+                        time.sleep(delay)
+                        delay *= 2
+                        continue
+                if "not found" in err or "unsupported" in err or "model" in err:
+                    print(f"  [LLM] Model '{model_name}' unavailable – trying fallback.")
+                    break          # skip to next model in list
+                print(f"  [LLM] Error: {e}")
+                break
+
+    return "[LLM unavailable – check GROQ_API_KEY and model name]"
+
+
+# Backwards-compat alias used by older agent files
+def safe_generate_content(prompt: str, **_kwargs) -> str:
+    return safe_invoke(prompt)
